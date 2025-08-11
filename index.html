@@ -5,100 +5,142 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>反応時間測定アプリ</title>
     <style>
-        body, html {
-            height: 100%;
-            margin: 0;
-            overflow: hidden; /* スクロールを禁止 */
-        }
-        #touch-area {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            width: 100%;
-            height: 100%;
-            background-color: #3498db; /* 初期画面の色 (青) */
-            color: white;
-            font-size: 24px;
-            font-family: sans-serif;
-            text-align: center;
-            transition: background-color 0.1s; /* 色の変化を滑らかに */
-        }
-        #touch-area.waiting {
-            background-color: #f1c40f; /* 待機中の色 (黄) */
-        }
-        #touch-area.go {
-            background-color: #2ecc71; /* スタートの色 (緑) */
-        }
+        body, html { height: 100%; margin: 0; overflow: hidden; font-family: sans-serif; background-color: #f0f0f0; }
+        .container { display: flex; justify-content: center; align-items: center; height: 100%; padding: 20px; box-sizing: border-box; }
+        /* 共通のボタンスタイル */
+        button { font-size: 18px; padding: 12px 24px; cursor: pointer; border: none; border-radius: 5px; background-color: #007bff; color: white; margin-top: 10px; }
+        /* 入力フォームのスタイル */
+        #setup-form { text-align: center; max-width: 400px; width: 100%; }
+        #setup-form h2 { margin-top: 0; margin-bottom: 20px; }
+        .form-group { margin-bottom: 15px; text-align: left; }
+        .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
+        .form-group input, .form-group select { font-size: 16px; padding: 10px; width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
+        /* 測定エリアのスタイル */
+        #touch-area { display: none; width: 100%; height: 100%; justify-content: center; align-items: center; background-color: #3498db; color: white; font-size: 24px; text-align: center; transition: background-color 0.1s; }
+        #touch-area.waiting { background-color: #f1c40f; }
+        #touch-area.go { background-color: #2ecc71; }
+        p { white-space: pre-wrap; }
     </style>
 </head>
 <body>
 
-<div id="touch-area">
-    <p id="message">画面に触れ続けてください</p>
+<div id="setup-container" class="container">
+    <div id="setup-form">
+        <h2>パフォーマンス測定</h2>
+        <div class="form-group"><label for="name-input">名前</label><input type="text" id="name-input" placeholder="名前を入力"></div>
+        <div class="form-group"><label for="age-input">年齢</label><input type="number" id="age-input" placeholder="年齢を入力"></div>
+        <div class="form-group"><label for="sleepiness-select">眠気 (1-5)</label><select id="sleepiness-select"><option value="1">1: 全く眠くない</option><option value="2">2: 少し眠い</option><option value="3" selected>3: 普通</option><option value="4">4: かなり眠い</option><option value="5">5: 非常に眠い</option></select></div>
+        <div class="form-group"><label for="fatigue-select">疲労度 (1-5)</label><select id="fatigue-select"><option value="1">1: 全く疲れていない</option><option value="2">2: 少し疲れている</option><option value="3" selected>3: 普通</option><option value="4">4: かなり疲れている</option><option value="5">5: 極度に疲れている</option></select></div>
+        <div class="form-group"><label for="alcohol-select">アルコール (直近3時間以内)</label><select id="alcohol-select"><option value="なし">なし</option><option value="あり">あり</option></select></div>
+        <div class="form-group"><label for="caffeine-select">カフェイン (直近3時間以内)</label><select id="caffeine-select"><option value="なし">なし</option><option value="あり">あり</option></select></div>
+        <button id="start-btn">測定開始 (10回)</button>
+    </div>
 </div>
 
-<script>
-    const touchArea = document.getElementById('touch-area');
-    const message = document.getElementById('message');
+<div id="touch-area"><p id="message"></p></div>
 
+<script>
+    // GASのウェブアプリURL (必ずご自身のものに書き換えてください)
+    const webAppUrl = 'ここにステップ2で再デプロイした最新のURLを貼り付け';
+
+    // 定数とセッション変数
+    const TOTAL_TRIALS = 10;
+    let trialCount = 0;
+    let resultsArray = [];
+    let sessionData = {}; // セッション情報をまとめるオブジェクト
     let timerId;
     let startTime;
-    let appState = 'initial'; // 'initial', 'waiting', 'go', 'result'
+    let appState = 'initial';
 
-    // 画面に指が触れた時の処理
-    touchArea.addEventListener('touchstart', (e) => {
-        e.preventDefault(); // 画面のズームなどを防ぐ
+    // HTML要素
+    const setupContainer = document.getElementById('setup-container');
+    const touchArea = document.getElementById('touch-area');
+    const message = document.getElementById('message');
+    const startBtn = document.getElementById('start-btn');
+    
+    // 「測定開始」ボタン
+    startBtn.addEventListener('click', () => {
+        // 入力値を取得してsessionDataオブジェクトに保存
+        sessionData = {
+            name: document.getElementById('name-input').value || '未入力',
+            age: document.getElementById('age-input').value || '未入力',
+            sleepiness: document.getElementById('sleepiness-select').value,
+            fatigue: document.getElementById('fatigue-select').value,
+            alcohol: document.getElementById('alcohol-select').value,
+            caffeine: document.getElementById('caffeine-select').value
+        };
+        
+        trialCount = 0;
+        resultsArray = [];
+        
+        setupContainer.style.display = 'none';
+        touchArea.style.display = 'flex';
+        prepareNextTrial();
+    });
 
-        if (appState === 'initial' || appState === 'result') {
+    // 次の試行を準備
+    function prepareNextTrial() {
+        if (trialCount >= TOTAL_TRIALS) {
+            showFinalResults();
+            return;
+        }
+        trialCount++;
+        appState = 'initial';
+        touchArea.style.backgroundColor = '#3498db';
+        touchArea.classList.remove('waiting', 'go');
+        message.textContent = `試行 ${trialCount} / ${TOTAL_TRIALS}\n\n画面に触れ続けてください`;
+    }
+
+    // 最終結果表示
+    function showFinalResults() {
+        const sum = resultsArray.reduce((a, b) => a + b, 0);
+        const avg = (sum / resultsArray.length).toFixed(2);
+        message.innerHTML = `全10回の測定が完了しました。\n\n平均反応時間: ${avg} ms<br><br><button onclick="restartSession()">最初の画面に戻る</button>`;
+        touchArea.style.backgroundColor = '#3498db';
+    }
+    
+    // セッションをリスタート
+    function restartSession() {
+        touchArea.style.display = 'none';
+        setupContainer.style.display = 'flex';
+    }
+
+    // touchstart イベント
+    touchArea.addEventListener('touchstart', e => {
+        e.preventDefault();
+        if (appState === 'initial') {
             appState = 'waiting';
-            touchArea.classList.remove('go');
             touchArea.classList.add('waiting');
             message.textContent = '準備... 合図が出たら指を離して！';
-            
-            // 2〜5秒のランダムな待機時間後にスタート
             const randomDelay = Math.random() * 3000 + 2000;
             timerId = setTimeout(startMeasurement, randomDelay);
         }
     });
 
-    // 画面から指が離れた時の処理
-    touchArea.addEventListener('touchend', (e) => {
+    // touchend イベント
+    touchArea.addEventListener('touchend', e => {
         e.preventDefault();
-
-    // (変更後)
-    if (appState === 'go') {
-        const endTime = performance.now();
-        const reactionTime = (endTime - startTime).toFixed(2);
-        message.textContent = `反応時間: ${reactionTime} ms\nもう一度試すには画面をタッチ`;
-
-        // --- ここからが追加部分 ---
-        const webAppUrl = 'https://script.google.com/macros/s/AKfycbx9UKO2pCCkIvHrTYSJDFDZQ2_q0Ev42DLDQUYM0QQ7xzRxoMsABPXOGlQd0fnUXpyf/exec';
-        
-        fetch(webAppUrl, {
-            method: 'POST',
-            mode: 'no-cors', // CORSエラーを回避するため
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({ reactionTime: reactionTime }), // 送信するデータ
-        })
-        .then(response => console.log('データ送信成功:', response))
-        .catch(error => console.error('データ送信エラー:', error));
-        // --- ここまでが追加部分 ---
-
-        appState = 'result';
-        touchArea.classList.remove('go');
-        touchArea.style.backgroundColor = '#3498db';
-    } else if (appState === 'waiting') {
-            // 早すぎた場合 (お手つき)
-            clearTimeout(timerId); // 予約したスタートをキャンセル
+        if (appState === 'go') {
+            const endTime = performance.now();
+            const reactionTime = parseFloat((endTime - startTime).toFixed(2));
+            
             appState = 'result';
-            message.textContent = '早すぎます！合図が出てから離してください。\nもう一度試すには画面をタッチ';
+            message.textContent = `結果: ${reactionTime} ms\n\n記録しました。`;
+            resultsArray.push(reactionTime);
+            saveDataToSheet(trialCount, reactionTime);
+            
+            touchArea.classList.remove('go');
+            setTimeout(prepareNextTrial, 2000);
+
+        } else if (appState === 'waiting') {
+            clearTimeout(timerId);
+            appState = 'initial';
+            message.textContent = `早すぎます！\nこの試行 (${trialCount}/${TOTAL_TRIALS}) をやり直します。\n\n画面に触れ続けてください`;
             touchArea.classList.remove('waiting');
         }
     });
     
-    // 測定開始の処理
+    // 測定開始
     function startMeasurement() {
         if (appState === 'waiting') {
             appState = 'go';
@@ -109,6 +151,23 @@
         }
     }
 
+    // スプレッドシートにデータを保存
+    function saveDataToSheet(trial, time) {
+        // セッション情報と今回の試行データを結合
+        const dataToSend = {
+            ...sessionData, // name, age, sleepiness, etc.
+            trialNumber: trial,
+            reactionTime: time
+        };
+
+        fetch(webAppUrl, {
+            method: 'POST', mode: 'no-cors',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(dataToSend),
+        })
+        .then(() => console.log(`Trial ${trial} data sent.`))
+        .catch(error => console.error('Data sending error:', error));
+    }
 </script>
 
 </body>
