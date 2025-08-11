@@ -65,16 +65,31 @@
     touchArea.addEventListener('touchend', (e) => {
         e.preventDefault();
 
-        if (appState === 'go') {
-            const endTime = performance.now();
-            const reactionTime = (endTime - startTime).toFixed(2); // 小数点以下2桁まで
-            message.textContent = `反応時間: ${reactionTime} ms\nもう一度試すには画面をタッチ`;
-            
-            appState = 'result';
-            touchArea.classList.remove('go');
-            touchArea.style.backgroundColor = '#3498db'; // 初期の色に戻す
+    // (変更後)
+    if (appState === 'go') {
+        const endTime = performance.now();
+        const reactionTime = (endTime - startTime).toFixed(2);
+        message.textContent = `反応時間: ${reactionTime} ms\nもう一度試すには画面をタッチ`;
 
-        } else if (appState === 'waiting') {
+        // --- ここからが追加部分 ---
+        const webAppUrl = 'https://script.google.com/macros/s/AKfycbx9UKO2pCCkIvHrTYSJDFDZQ2_q0Ev42DLDQUYM0QQ7xzRxoMsABPXOGlQd0fnUXpyf/exec';
+        
+        fetch(webAppUrl, {
+            method: 'POST',
+            mode: 'no-cors', // CORSエラーを回避するため
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ reactionTime: reactionTime }), // 送信するデータ
+        })
+        .then(response => console.log('データ送信成功:', response))
+        .catch(error => console.error('データ送信エラー:', error));
+        // --- ここまでが追加部分 ---
+
+        appState = 'result';
+        touchArea.classList.remove('go');
+        touchArea.style.backgroundColor = '#3498db';
+    } else if (appState === 'waiting') {
             // 早すぎた場合 (お手つき)
             clearTimeout(timerId); // 予約したスタートをキャンセル
             appState = 'result';
