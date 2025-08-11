@@ -5,18 +5,15 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>反応時間測定アプリ</title>
     <style>
-        body, html { height: 100%; margin: 0; overflow: hidden; font-family: sans-serif; background-color: #f0f0f0; }
-        .container { display: flex; justify-content: center; align-items: center; height: 100%; padding: 20px; box-sizing: border-box; }
-        /* 共通のボタンスタイル */
+        body, html { height: 100%; margin: 0; overflow-y: auto; font-family: sans-serif; background-color: #f0f0f0; }
+        .container { display: flex; justify-content: center; align-items: center; min-height: 100%; padding: 20px; box-sizing: border-box; }
         button { font-size: 18px; padding: 12px 24px; cursor: pointer; border: none; border-radius: 5px; background-color: #007bff; color: white; margin-top: 10px; }
-        /* 入力フォームのスタイル */
         #setup-form { text-align: center; max-width: 400px; width: 100%; }
         #setup-form h2 { margin-top: 0; margin-bottom: 20px; }
         .form-group { margin-bottom: 15px; text-align: left; }
         .form-group label { display: block; margin-bottom: 5px; font-weight: bold; }
         .form-group input, .form-group select { font-size: 16px; padding: 10px; width: 100%; box-sizing: border-box; border: 1px solid #ccc; border-radius: 4px; }
-        /* 測定エリアのスタイル */
-        #touch-area { display: none; width: 100%; height: 100%; justify-content: center; align-items: center; background-color: #3498db; color: white; font-size: 24px; text-align: center; transition: background-color 0.1s; }
+        #touch-area { display: none; width: 100%; height: 100%; position: fixed; top: 0; left: 0; justify-content: center; align-items: center; background-color: #3498db; color: white; font-size: 24px; text-align: center; transition: background-color 0.1s; }
         #touch-area.waiting { background-color: #f1c40f; }
         #touch-area.go { background-color: #2ecc71; }
         p { white-space: pre-wrap; }
@@ -29,8 +26,13 @@
         <h2>パフォーマンス測定</h2>
         <div class="form-group"><label for="name-input">名前</label><input type="text" id="name-input" placeholder="名前を入力"></div>
         <div class="form-group"><label for="age-input">年齢</label><input type="number" id="age-input" placeholder="年齢を入力"></div>
-        <div class="form-group"><label for="sleepiness-select">眠気 (1-5)</label><select id="sleepiness-select"><option value="1">1: 全く眠くない</option><option value="2">2: 少し眠い</option><option value="3" selected>3: 普通</option><option value="4">4: かなり眠い</option><option value="5">5: 非常に眠い</option></select></div>
-        <div class="form-group"><label for="fatigue-select">疲労度 (1-5)</label><select id="fatigue-select"><option value="1">1: 全く疲れていない</option><option value="2">2: 少し疲れている</option><option value="3" selected>3: 普通</option><option value="4">4: かなり疲れている</option><option value="5">5: 極度に疲れている</option></select></div>
+        <div class="form-group"><label for="sleepiness-select">眠気 (1-5)</label><select id="sleepiness-select"><option value="1">1: 全く眠くない</option><option value="2">2: ほとんど眠くない</option><option value="3" selected>3: 普通</option><option value="4">4: 少し眠い</option><option value="5">5: 非常に眠い</option></select></div>
+        <div class="form-group"><label for="fatigue-select">疲労度 (1-5)</label><select id="fatigue-select"><option value="1">1: 全く疲れていない</option><option value="2">2: あまり疲れていない</option><option value="3" selected>3: 普通</option><option value="4">4: 少し疲れている</option><option value="5">5: 極度に疲れている</option></select></div>
+        
+        <!-- ▼ 新しく追加した項目 ▼ -->
+        <div class="form-group"><label for="noise-select">周囲の状況</label><select id="noise-select"><option value="無音">無音</option><option value="少しざわざわ" selected>少しざわざわしている</option><option value="うるさい">うるさい</option></select></div>
+        <!-- ▲ ここまで ▲ -->
+        
         <div class="form-group"><label for="alcohol-select">アルコール (直近3時間以内)</label><select id="alcohol-select"><option value="なし">なし</option><option value="あり">あり</option></select></div>
         <div class="form-group"><label for="caffeine-select">カフェイン (直近3時間以内)</label><select id="caffeine-select"><option value="なし">なし</option><option value="あり">あり</option></select></div>
         <button id="start-btn">測定開始 (10回)</button>
@@ -41,13 +43,13 @@
 
 <script>
     // GASのウェブアプリURL (必ずご自身のものに書き換えてください)
-    const webAppUrl = 'https://script.google.com/macros/s/AKfycbwePzON2rrIWTNt6GUB3HahCicZI9VSE1xoqs1d4l_ajeWYXMCjJ0lOrqW9ZXF7-2Lm/exec';
+    const webAppUrl = 'https://script.google.com/macros/s/AKfycbx0OsXreoNhQKh4VT6xpzKjbXQRQj2RBgNURmWaKyYVy1NVpWlCoITtn3cw1wV3vnCA/exec';
 
     // 定数とセッション変数
     const TOTAL_TRIALS = 10;
     let trialCount = 0;
     let resultsArray = [];
-    let sessionData = {}; // セッション情報をまとめるオブジェクト
+    let sessionData = {};
     let timerId;
     let startTime;
     let appState = 'initial';
@@ -60,12 +62,12 @@
     
     // 「測定開始」ボタン
     startBtn.addEventListener('click', () => {
-        // 入力値を取得してsessionDataオブジェクトに保存
         sessionData = {
             name: document.getElementById('name-input').value || '未入力',
             age: document.getElementById('age-input').value || '未入力',
             sleepiness: document.getElementById('sleepiness-select').value,
             fatigue: document.getElementById('fatigue-select').value,
+            ambientNoise: document.getElementById('noise-select').value, // 追加
             alcohol: document.getElementById('alcohol-select').value,
             caffeine: document.getElementById('caffeine-select').value
         };
@@ -112,7 +114,7 @@
             appState = 'waiting';
             touchArea.classList.add('waiting');
             message.textContent = '準備... 合図が出たら指を離して！';
-            const randomDelay = Math.random() * 3000 + 1000;
+            const randomDelay = Math.random() * 3000 + 2000;
             timerId = setTimeout(startMeasurement, randomDelay);
         }
     });
@@ -130,7 +132,7 @@
             saveDataToSheet(trialCount, reactionTime);
             
             touchArea.classList.remove('go');
-            setTimeout(prepareNextTrial, 1000);
+            setTimeout(prepareNextTrial, 2000);
 
         } else if (appState === 'waiting') {
             clearTimeout(timerId);
@@ -153,9 +155,8 @@
 
     // スプレッドシートにデータを保存
     function saveDataToSheet(trial, time) {
-        // セッション情報と今回の試行データを結合
         const dataToSend = {
-            ...sessionData, // name, age, sleepiness, etc.
+            ...sessionData,
             trialNumber: trial,
             reactionTime: time
         };
